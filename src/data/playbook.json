@@ -1,0 +1,200 @@
+{
+  "meta": {
+    "title": "Outreach Console",
+    "version": "2.0"
+  },
+  "leadSources": [
+    {
+      "title": "YC Companies",
+      "url": "https://www.ycombinator.com/companies",
+      "description": "Y Combinator's directory of funded startups. Filter by batch, industry, and stage.",
+      "tag": "Best for founders"
+    },
+    {
+      "title": "Product Hunt",
+      "url": "https://www.producthunt.com",
+      "description": "Discover newly launched products. Great for finding founders actively building.",
+      "tag": "Best for fresh launches"
+    },
+    {
+      "title": "Crunchbase Discover",
+      "url": "https://www.crunchbase.com/discover",
+      "description": "Search for recently funded companies by round, industry, and location.",
+      "tag": "Best for funded startups"
+    },
+    {
+      "title": "Wellfound",
+      "url": "https://wellfound.com",
+      "description": "Startup job board with company profiles. Useful for finding lean teams hiring engineers.",
+      "tag": "Best for hiring signals"
+    },
+    {
+      "title": "LinkedIn",
+      "url": "https://www.linkedin.com",
+      "description": "Professional network for direct founder outreach and company research.",
+      "tag": "Best for direct outreach"
+    }
+  ],
+  "discovery": {
+    "intro": "Copy the command, paste into the target platform, then apply the filters exactly.",
+    "linkedin": {
+      "instructions": [
+        "Paste command into LinkedIn search bar",
+        "Press Enter, then click People",
+        "Apply filters: Location, Company Size, Industry",
+        "Target founders, CTOs, and heads of engineering",
+        "Send short cold outreach after qualification"
+      ],
+      "commands": [
+        {
+          "title": "Broad founder / engineering search",
+          "command": "Founder OR CEO OR CTO OR \"Technical Founder\" OR \"Head of Engineering\" OR \"Engineering Manager\"",
+          "note": "Main volume search for founders and technical decision-makers."
+        },
+        {
+          "title": "Technical decision makers",
+          "command": "CTO OR \"Technical Founder\" OR \"Head of Engineering\" OR \"Engineering Manager\"",
+          "note": "Focuses on engineering leaders most likely to evaluate technical contractors."
+        },
+        {
+          "title": "Founder sweep",
+          "command": "Founder OR CEO OR CTO",
+          "note": "Run separately to capture startup founders directly."
+        }
+      ],
+      "filters": {
+        "titles": ["Founder", "Co-Founder", "CTO", "Head of Engineering", "Technical Founder", "Engineering Manager"],
+        "companySize": ["1-10", "11-50", "51-200"],
+        "industries": ["Software", "AI", "Data", "Analytics"],
+        "location": ["United States", "Remote"]
+      }
+    },
+    "google": {
+      "instructions": [
+        "Use when LinkedIn search quality drops",
+        "Use to widen search beyond internal platform ranking",
+        "Use to find engineering leaders fast"
+      ],
+      "commands": [
+        {
+          "title": "SaaS / AI founders",
+          "command": "site:linkedin.com/in (Founder OR CEO OR CTO) (AI OR SaaS OR software) startup",
+          "note": "Broad discovery across LinkedIn profiles."
+        },
+        {
+          "title": "Startup engineering leaders",
+          "command": "site:linkedin.com/in (CTO OR \"Head of Engineering\") startup",
+          "note": "Surfaces engineering leadership profiles from startups quickly."
+        },
+        {
+          "title": "Product Hunt founders",
+          "command": "site:producthunt.com SaaS launch",
+          "note": "Find founders launching on Product Hunt."
+        },
+        {
+          "title": "Wellfound founders",
+          "command": "site:wellfound.com founder startup",
+          "note": "Find startup founders with Wellfound profiles."
+        },
+        {
+          "title": "Funding news",
+          "command": "site:techcrunch.com startup raises",
+          "note": "Surface recently funded startups from TechCrunch coverage."
+        }
+      ]
+    },
+    "expanded": {
+      "instructions": [
+        "Use X/Twitter when founders are posting about hiring",
+        "Use Wellfound themes to discover startup companies, then identify decision-makers"
+      ],
+      "commands": [
+        {
+          "title": "X / Twitter founder discovery",
+          "command": "(founder OR cofounder OR CTO) (AI OR SaaS OR software) hiring",
+          "note": "Use inside X search or Google with site:x.com to find founders discussing hiring."
+        },
+        {
+          "title": "Wellfound discovery themes",
+          "command": "AI startup | SaaS startup | developer tools | analytics | workflow automation | B2B software",
+          "note": "Use these themes to locate startup companies, then find founders or engineering leaders."
+        },
+        {
+          "title": "Recently funded AI startup",
+          "command": "recently funded AI startup",
+          "note": "General discovery search for newly funded companies."
+        },
+        {
+          "title": "Seed round SaaS",
+          "command": "seed round SaaS startup",
+          "note": "Surface early-stage SaaS companies."
+        },
+        {
+          "title": "Building in public",
+          "command": "\"building in public\" founder",
+          "note": "Find founders actively sharing their journey."
+        }
+      ]
+    }
+  },
+  "emailExtraction": {
+    "steps": [
+      "Find company domain from their website or LinkedIn",
+      "Find target name (founder, CTO, or head of engineering)",
+      "Use discovery tools to find or guess their email",
+      "Try common email patterns if tools don't return results",
+      "Verify email with NeverBounce before sending",
+      "Only send after verification passes"
+    ],
+    "tools": [
+      { "title": "Apollo", "url": "https://apollo.io" },
+      { "title": "Hunter", "url": "https://hunter.io" },
+      { "title": "RocketReach", "url": "https://rocketreach.co" },
+      { "title": "Snov", "url": "https://snov.io" },
+      { "title": "NeverBounce", "url": "https://neverbounce.com" }
+    ],
+    "commonPatterns": [
+      "first@company.com",
+      "first.last@company.com",
+      "firstlast@company.com",
+      "flast@company.com"
+    ],
+    "rule": "Never send without verifying first."
+  },
+  "messaging": {
+    "linkedin": {
+      "title": "LinkedIn Outreach",
+      "instructions": [
+        "Keep the message to 2-3 short lines",
+        "Reference one specific thing about their company or product",
+        "Ask a simple low-friction question",
+        "Do not pitch. Optimize for reply.",
+        "Message founders, CTOs, and heads of engineering only"
+      ],
+      "example": "Saw you're building [product].\nMy partner builds analytics and automation systems for operational teams.\nHappy to connect."
+    },
+    "email": {
+      "title": "Cold Email",
+      "instructions": [
+        "Verify email before sending",
+        "Keep to 3-4 short lines maximum",
+        "Reference their product, launch, team, or hiring signal",
+        "Include one brief value statement",
+        "Ask a simple question or offer to help",
+        "Do not over-explain. Brevity wins."
+      ],
+      "example": "Hi - saw you're building [company].\n\nMy partner builds analytics, reporting automation, and backend systems for operations-heavy teams.\n\nRecently built a multi-tenant reporting platform used by an energy operations company.\n\nHappy to help if backend/data engineering support would be useful."
+    },
+    "followUp": {
+      "title": "Follow-Up",
+      "instructions": [
+        "First follow-up on Day 3",
+        "Final follow-up on Day 7",
+        "Keep it brief - reference the prior message lightly",
+        "Ask one simple next-step question",
+        "If they reply: respond same day, ask one discovery question, suggest a short call"
+      ],
+      "example": "Just circling back in case this might be useful."
+    }
+  }
+}

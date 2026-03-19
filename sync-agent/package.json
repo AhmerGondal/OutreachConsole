@@ -5,7 +5,9 @@
   "scripts": {
     "sync": "tsx src/index.ts",
     "sync:dry": "tsx src/index.ts --dry-run",
-    "build": "tsc"
+    "sync:reset": "tsx src/index.ts --reset",
+    "build": "tsc",
+    "start": "node dist/index.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.99.2",

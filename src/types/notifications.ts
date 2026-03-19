@@ -6,6 +6,7 @@ export type NotificationCategory =
   | 'recruiter_follow_up'
   | 'interview_invite'
   | 'rejection'
+  | 'connection_acceptance'
   | 'reminder'
   | 'digest'
   | 'marketing'
@@ -66,6 +67,7 @@ export const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   recruiter_follow_up: 'Follow-Up',
   interview_invite: 'Interview Invite',
   rejection: 'Rejection',
+  connection_acceptance: 'Connection',
   reminder: 'Reminder',
   digest: 'Digest',
   marketing: 'Marketing',

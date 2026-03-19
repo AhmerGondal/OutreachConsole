@@ -80,7 +80,20 @@ function rowToApplication(row: AppRow): TrackedApplication {
 
 // --------------- Notifications ---------------
 
-const SUPPRESSED_CATEGORIES = ['digest', 'marketing'];
+// Categories excluded from Notices display and badge counts
+const SUPPRESSED_CATEGORIES = [
+  'digest',
+  'marketing',
+  'connection_acceptance',
+  'reminder',
+  'unknown_relevant',
+];
+
+// Categories excluded from Notices badge counts (but may still show in list if not suppressed)
+const NON_ACTIONABLE_CATEGORIES = [
+  ...SUPPRESSED_CATEGORIES,
+  'application_confirmation',
+];
 
 export async function fetchNotifications(opts?: {
   statusFilter?: NotificationStatus;
@@ -123,8 +136,12 @@ export async function fetchNotificationSummary(): Promise<NotificationSummary> {
     category: string;
   }>;
 
-  // Exclude suppressed from counts
+  // Exclude suppressed from all counts
   const relevant = rows.filter((r) => !SUPPRESSED_CATEGORIES.includes(r.category));
+  // Exclude non-actionable from action count
+  const actionable = relevant.filter(
+    (r) => r.action_required && !NON_ACTIONABLE_CATEGORIES.includes(r.category)
+  );
 
   const byPlatform: Record<string, number> = {};
   const byCategory: Record<string, number> = {};
@@ -136,7 +153,7 @@ export async function fetchNotificationSummary(): Promise<NotificationSummary> {
 
   return {
     totalUnread: relevant.length,
-    actionRequired: relevant.filter((r) => r.action_required).length,
+    actionRequired: actionable.length,
     byPlatform,
     byCategory,
   };
@@ -168,17 +185,19 @@ export async function markAllNotificationsRead(): Promise<void> {
 
 // --------------- Active Leads / Responses ---------------
 
-const LEAD_CATEGORIES = [
+// STRICT: only true human interactions and application responses
+const ACTIVE_LEAD_CATEGORIES = [
   'recruiter_response',
   'recruiter_follow_up',
   'interview_invite',
+  'rejection',
 ];
 
 export async function fetchActiveLeads(): Promise<EmailNotification[]> {
   const { data, error } = await supabase
     .from('email_notifications')
     .select('*')
-    .in('category', LEAD_CATEGORIES)
+    .in('category', ACTIVE_LEAD_CATEGORIES)
     .in('status', ['unread', 'read'])
     .order('created_at', { ascending: false })
     .limit(50);

@@ -46,7 +46,7 @@ function Dashboard() {
       <main className="relative z-10 mx-auto max-w-5xl px-6 pt-16 lg:ml-60 lg:pt-0">
         <CommandCenter store={store} notifSummary={notifStore.summary} />
         <NotificationCenter store={notifStore} />
-        <ActiveLeadsPanel leads={notifStore.activeLeads} loading={notifStore.loading} />
+        <ActiveLeadsPanel leads={notifStore.activeLeads} loading={notifStore.loading} onDismiss={notifStore.dismiss} />
         <ActiveApplicationsPanel store={appStore} />
         <LeadSourcesSection />
         <DiscoverySection />

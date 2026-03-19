@@ -20,4 +20,5 @@ export const config = {
   syncTargetEmail: required('SYNC_TARGET_EMAIL'),
   backfillDays: 7,
   dryRun: process.argv.includes('--dry-run'),
+  resetMode: process.argv.includes('--reset'),
 } as const;

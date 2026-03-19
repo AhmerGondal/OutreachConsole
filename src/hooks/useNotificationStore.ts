@@ -65,6 +65,7 @@ export function useNotificationStore(): NotificationStore {
 
   const dismiss = useCallback((id: string) => {
     setNotifications((prev) => prev.filter((n) => n.id !== id));
+    setActiveLeads((prev) => prev.filter((n) => n.id !== id));
     nApi.dismissNotification(id).catch(console.error);
   }, []);
 

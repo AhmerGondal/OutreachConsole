@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { Bell, CheckCheck, X, AlertCircle, Mail, ExternalLink } from 'lucide-react';
+import { Bell, CheckCheck, X, AlertCircle, Mail } from 'lucide-react';
 import { SectionWrapper } from '../SectionWrapper';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import type { NotificationStore } from '../../hooks/useNotificationStore';

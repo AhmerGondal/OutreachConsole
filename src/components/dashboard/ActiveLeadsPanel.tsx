@@ -1,5 +1,5 @@
 import { motion } from 'framer-motion';
-import { UserCheck, MessageSquare, AlertCircle } from 'lucide-react';
+import { UserCheck, AlertCircle, X } from 'lucide-react';
 import { SectionWrapper } from '../SectionWrapper';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import type { EmailNotification } from '../../types/notifications';
@@ -8,6 +8,7 @@ import { CATEGORY_LABELS } from '../../types/notifications';
 interface ActiveLeadsPanelProps {
   leads: EmailNotification[];
   loading: boolean;
+  onDismiss: (id: string) => void;
 }
 
 function platformBadge(p: string) {
@@ -28,7 +29,7 @@ function timeAgo(dateStr: string): string {
   return `${days}d`;
 }
 
-export function ActiveLeadsPanel({ leads, loading }: ActiveLeadsPanelProps) {
+export function ActiveLeadsPanel({ leads, loading, onDismiss }: ActiveLeadsPanelProps) {
   const reduced = useReducedMotion();
 
   return (
@@ -81,6 +82,15 @@ export function ActiveLeadsPanel({ leads, loading }: ActiveLeadsPanelProps) {
               <span className="flex-shrink-0 text-[10px] tabular-nums text-white/15">
                 {timeAgo(lead.receivedAt)}
               </span>
+
+              {/* Dismiss */}
+              <button
+                onClick={(e) => { e.stopPropagation(); onDismiss(lead.id); }}
+                className="flex-shrink-0 rounded p-1 text-white/0 transition-colors group-hover:text-white/20 hover:!bg-white/[0.06] hover:!text-white/50"
+                title="Remove from active leads"
+              >
+                <X size={12} />
+              </button>
             </motion.div>
           ))}
         </div>

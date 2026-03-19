@@ -1,18 +1,20 @@
 import { useState } from 'react';
 import { motion } from 'framer-motion';
-import { Gauge, Plus, LogOut, MessageSquare, CalendarCheck } from 'lucide-react';
+import { Gauge, Plus, LogOut, MessageSquare, CalendarCheck, Bell, AlertCircle } from 'lucide-react';
 import { countByStatus } from '../../lib/leadTracker';
 import { DailyOutreachCounter } from './DailyOutreachCounter';
 import { QuickAddLead } from './QuickAddLead';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { useAuth } from '../../hooks/useAuth';
 import type { LeadStore } from '../../hooks/useLeadStore';
+import type { NotificationSummary } from '../../types/notifications';
 
 interface CommandCenterProps {
   store: LeadStore;
+  notifSummary: NotificationSummary;
 }
 
-export function CommandCenter({ store }: CommandCenterProps) {
+export function CommandCenter({ store, notifSummary }: CommandCenterProps) {
   const reduced = useReducedMotion();
   const { user, signOut } = useAuth();
   const [addOpen, setAddOpen] = useState(false);
@@ -62,8 +64,26 @@ export function CommandCenter({ store }: CommandCenterProps) {
           />
         </div>
 
-        {/* Response summary strip */}
-        <div className="mb-8 grid grid-cols-3 gap-3">
+        {/* Summary strip */}
+        <div className="mb-8 grid grid-cols-4 gap-3">
+          {/* Unread notices */}
+          <a href="#notifications" className="group rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3 transition-colors hover:bg-white/[0.04]">
+            <div className="flex items-center gap-1.5">
+              <Bell size={12} className="text-accent-light/60" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25">Notices</span>
+            </div>
+            <div className="mt-1 flex items-baseline gap-2">
+              <span className="text-2xl font-semibold tabular-nums text-white/80">{notifSummary.totalUnread}</span>
+              {notifSummary.actionRequired > 0 && (
+                <span className="flex items-center gap-0.5 text-[10px] text-rose-400/70">
+                  <AlertCircle size={9} />
+                  {notifSummary.actionRequired}
+                </span>
+              )}
+            </div>
+          </a>
+
+          {/* Responses */}
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-1.5">
               <MessageSquare size={12} className="text-emerald-400/60" />
@@ -71,6 +91,8 @@ export function CommandCenter({ store }: CommandCenterProps) {
             </div>
             <span className="mt-1 block text-2xl font-semibold tabular-nums text-white/80">{store.responseCount}</span>
           </div>
+
+          {/* Meetings */}
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-1.5">
               <CalendarCheck size={12} className="text-violet-400/60" />
@@ -78,6 +100,8 @@ export function CommandCenter({ store }: CommandCenterProps) {
             </div>
             <span className="mt-1 block text-2xl font-semibold tabular-nums text-white/80">{meetingsBooked}</span>
           </div>
+
+          {/* Total Leads */}
           <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-3">
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.12em] text-white/25">Total Leads</span>

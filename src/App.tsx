@@ -4,12 +4,17 @@ import { Navigation } from './components/Navigation';
 import { SearchModal } from './components/SearchModal';
 import { AuthGate } from './components/AuthGate';
 import { CommandCenter } from './components/dashboard/CommandCenter';
+import { NotificationCenter } from './components/dashboard/NotificationCenter';
+import { ActiveLeadsPanel } from './components/dashboard/ActiveLeadsPanel';
+import { ActiveApplicationsPanel } from './components/dashboard/ActiveApplicationsPanel';
 import { LeadSourcesSection } from './components/sections/LeadSourcesSection';
 import { DiscoverySection } from './components/sections/DiscoverySection';
 import { EmailExtractionSection } from './components/sections/EmailExtractionSection';
 import { MessagingSection } from './components/sections/MessagingSection';
 import { ResponseTrackerSection } from './components/sections/ResponseTrackerSection';
 import { useLeadStore } from './hooks/useLeadStore';
+import { useNotificationStore } from './hooks/useNotificationStore';
+import { useApplicationStore } from './hooks/useApplicationStore';
 import { useAuthProvider, AuthContext } from './hooks/useAuth';
 
 function Dashboard() {
@@ -17,6 +22,8 @@ function Dashboard() {
   const openSearch = useCallback(() => setSearchOpen(true), []);
   const closeSearch = useCallback(() => setSearchOpen(false), []);
   const store = useLeadStore();
+  const notifStore = useNotificationStore();
+  const appStore = useApplicationStore();
 
   if (store.loading) {
     return (
@@ -37,7 +44,10 @@ function Dashboard() {
       <SearchModal open={searchOpen} onClose={closeSearch} />
 
       <main className="relative z-10 mx-auto max-w-5xl px-6 pt-16 lg:ml-60 lg:pt-0">
-        <CommandCenter store={store} />
+        <CommandCenter store={store} notifSummary={notifStore.summary} />
+        <NotificationCenter store={notifStore} />
+        <ActiveLeadsPanel leads={notifStore.activeLeads} loading={notifStore.loading} />
+        <ActiveApplicationsPanel store={appStore} />
         <LeadSourcesSection />
         <DiscoverySection />
         <EmailExtractionSection />

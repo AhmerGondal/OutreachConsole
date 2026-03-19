@@ -5,6 +5,9 @@ export const playbook: Playbook = data as Playbook;
 
 export const sections: Section[] = [
   { id: 'command-center', label: 'Mission Control', icon: 'Gauge' },
+  { id: 'notifications', label: 'Notices', icon: 'Bell' },
+  { id: 'active-leads', label: 'Active Leads', icon: 'MessageSquare' },
+  { id: 'applications', label: 'Applications', icon: 'Briefcase' },
   { id: 'lead-sources', label: 'Lead Sources', icon: 'Database' },
   { id: 'discovery', label: 'Discovery', icon: 'Terminal' },
   { id: 'email-extraction', label: 'Email Extraction', icon: 'Mail' },

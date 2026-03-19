@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import {
   Gauge, UserCheck, Database, Terminal, Mail, Send,
+  Bell, MessageSquare, Briefcase,
   Search, X, Menu,
 } from 'lucide-react';
 import { sections } from '../lib/playbook';
@@ -11,6 +12,9 @@ import type { ReactNode } from 'react';
 
 const iconMap: Record<string, ReactNode> = {
   Gauge: <Gauge size={16} />,
+  Bell: <Bell size={16} />,
+  MessageSquare: <MessageSquare size={16} />,
+  Briefcase: <Briefcase size={16} />,
   UserCheck: <UserCheck size={16} />,
   Database: <Database size={16} />,
   Terminal: <Terminal size={16} />,
@@ -41,7 +45,7 @@ export function Navigation({ onOpenSearch }: NavigationProps) {
     <nav className="flex flex-col gap-0.5">
       {sections.map((s, i) => {
         const isActive = activeId === s.id;
-        const showDivider = i === 1;
+        const showDivider = i === 4;
         return (
           <div key={s.id}>
             {showDivider && (

@@ -1,6 +1,6 @@
 import { supabase, resolveUserId } from './supabaseAdmin.js';
 import { fetchEmails, type RawEmail } from './imapClient.js';
-import { classifyEmail, buildApplicationKey, type ClassifiedEmail } from './classifier.js';
+import { classifyEmail, buildApplicationKey, type ClassifiedEmail } from './classifier/index.js';
 import { config } from './config.js';
 import { log } from './logger.js';
 
@@ -23,6 +23,8 @@ interface SyncStats {
 const PLATFORM_DISPLAY: Record<string, string> = {
   linkedin: 'LinkedIn',
   wellfound: 'Wellfound',
+  mercor: 'Mercor',
+  direct_email: 'Direct',
   other: 'Other',
 };
 
@@ -49,7 +51,7 @@ export async function resetSyncData(): Promise<void> {
 }
 
 // ========================================================
-// SYNC STATE — reads initial_backfill_completed
+// SYNC STATE
 // ========================================================
 
 async function getOrCreateSyncState(userId: string): Promise<SyncState> {
@@ -133,6 +135,12 @@ async function insertNotificationIfNew(
       received_at: classified.raw.date?.toISOString() || new Date().toISOString(),
       snippet: classified.snippet,
       fingerprint: classified.fingerprint,
+      metadata: {
+        role_title: classified.roleTitle,
+        confidence: classified.classification.classification_confidence,
+        job_interest_score: classified.classification.job_interest_score,
+        reasoning_tags: classified.classification.reasoning_tags,
+      },
     });
 
   if (error) {
@@ -147,19 +155,16 @@ async function insertNotificationIfNew(
 // APPLICATION
 // ========================================================
 
-const APP_CATEGORIES = new Set([
-  'application_confirmation',
-  'recruiter_response',
-  'recruiter_follow_up',
-  'interview_invite',
-  'rejection',
-]);
-
+// Maps new category names to the DB application_status values
 const CATEGORY_TO_APP_STATUS: Record<string, string> = {
   application_confirmation: 'active',
+  application_update: 'active',
   recruiter_response: 'responded',
-  recruiter_follow_up: 'responded',
-  interview_invite: 'interviewing',
+  inmail_message: 'responded',
+  job_opportunity: 'responded',
+  general_employment_interest: 'responded',
+  interview: 'interviewing',
+  assessment: 'interviewing',
   rejection: 'rejected',
 };
 
@@ -169,7 +174,8 @@ async function trackApplication(
   userId: string,
   classified: ClassifiedEmail,
 ): Promise<boolean> {
-  if (!APP_CATEGORIES.has(classified.category)) return false;
+  // Use the classification's action flag
+  if (!classified.classification.should_create_or_update_application) return false;
 
   const appKey = buildApplicationKey(
     classified.platform,
@@ -241,19 +247,16 @@ async function trackApplication(
 }
 
 // ========================================================
-// RESPONSE LEAD — LinkedIn human signals only
+// RESPONSE LEAD
 // ========================================================
-
-const RESPONSE_LEAD_CATEGORIES = new Set([
-  'recruiter_response',
-  'recruiter_follow_up',
-  'interview_invite',
-]);
 
 const CATEGORY_TO_LEAD_STATUS: Record<string, string> = {
   recruiter_response: 'Replied',
-  recruiter_follow_up: 'Follow Up',
-  interview_invite: 'Meeting Booked',
+  inmail_message: 'Replied',
+  job_opportunity: 'New',
+  general_employment_interest: 'New',
+  interview: 'Meeting Booked',
+  assessment: 'Contacted',
 };
 
 const LEAD_STATUS_ORDER = ['New', 'Contacted', 'Replied', 'Follow Up', 'Positive', 'Meeting Booked'];
@@ -267,12 +270,12 @@ async function trackResponseLead(
   userId: string,
   classified: ClassifiedEmail,
 ): Promise<boolean> {
-  if (classified.platform !== 'linkedin') return false;
-  if (!RESPONSE_LEAD_CATEGORIES.has(classified.category)) return false;
+  // Use the classification's action flag (no longer hardcoded to LinkedIn-only)
+  if (!classified.classification.should_create_or_update_response_lead) return false;
 
   const name = classified.contactName || classified.raw.from?.name || 'Unknown Contact';
   const companyName = classified.companyName || 'Unknown';
-  const platform = 'LinkedIn';
+  const platform = PLATFORM_DISPLAY[classified.platform] || 'Other';
   const senderEmail = classified.raw.from?.address || null;
   const noReply = isNoReply(senderEmail);
   const newStatus = CATEGORY_TO_LEAD_STATUS[classified.category] || 'Replied';
@@ -335,15 +338,19 @@ async function trackResponseLead(
 }
 
 // ========================================================
-// EXISTING COMPANY INTEREST
+// EXISTING APPLICATION / CONTACT MATCH
 // ========================================================
+
+const INTEREST_CATEGORIES = new Set([
+  'recruiter_response', 'inmail_message', 'job_opportunity',
+  'general_employment_interest', 'interview', 'assessment',
+]);
 
 async function checkExistingApplicationInterest(
   userId: string,
   classified: ClassifiedEmail,
 ): Promise<boolean> {
-  const interestCategories = new Set(['recruiter_response', 'recruiter_follow_up', 'interview_invite']);
-  if (!interestCategories.has(classified.category)) return false;
+  if (!INTEREST_CATEGORIES.has(classified.category)) return false;
   if (!classified.companyName) return false;
 
   const { data: app } = await supabase
@@ -377,16 +384,10 @@ async function checkExistingApplicationInterest(
   return true;
 }
 
-// ========================================================
-// EXISTING CONTACT MATCH
-// ========================================================
-
 async function checkExistingContactMatch(
   userId: string,
   classified: ClassifiedEmail,
 ): Promise<boolean> {
-  if (classified.platform !== 'linkedin') return false;
-
   const senderEmail = classified.raw.from?.address?.toLowerCase();
   const noReply = isNoReply(senderEmail);
 
@@ -465,13 +466,11 @@ export async function runSyncOnce(): Promise<SyncStats> {
   let emails: RawEmail[];
 
   if (needsBackfill) {
-    // FIRST RUN: scan last 7 days
     log.info(`Running initial ${config.backfillDays}-day backfill`);
     const since = new Date();
     since.setDate(since.getDate() - config.backfillDays);
     emails = await fetchEmails({ since });
   } else {
-    // SUBSEQUENT RUNS: incremental from checkpoint
     log.info(`Incremental sync from UID ${state.last_seen_uid ?? 'none'}`);
     emails = await fetchEmails({
       afterUid: state.last_seen_uid || undefined,
@@ -490,32 +489,41 @@ export async function runSyncOnce(): Promise<SyncStats> {
 
   for (const raw of emails) {
     const classified = classifyEmail(raw);
+    const cl = classified.classification;
 
     if (config.dryRun) {
       log.info(
-        `[DRY] ${classified.platform} | ${classified.category} | ` +
-        `company=${classified.companyName || '?'} | ${raw.subject.slice(0, 60)}`
+        `[DRY] ${cl.platform} | ${cl.category} | ` +
+        `pri=${cl.priority} conf=${cl.classification_confidence.toFixed(2)} | ` +
+        `company=${cl.company_name || '?'} | ` +
+        `notify=${cl.should_create_notification} app=${cl.should_create_or_update_application} ` +
+        `lead=${cl.should_create_or_update_response_lead} suppress=${cl.should_suppress} | ` +
+        `${raw.subject.slice(0, 60)}`,
       );
       stats.notifications++;
       continue;
     }
 
-    // A. Check existing application interest (any platform)
+    // A. Check existing application interest
     const isAppInterest = await checkExistingApplicationInterest(userId, classified);
     if (isAppInterest) stats.contactMatches++;
 
-    // B. Check existing contact match (LinkedIn only)
+    // B. Check existing contact match
     if (!isAppInterest) {
       const isContactMatch = await checkExistingContactMatch(userId, classified);
       if (isContactMatch) stats.contactMatches++;
     }
 
-    // C. Insert notification
-    const notifCreated = await insertNotificationIfNew(userId, classified);
-    if (notifCreated) {
-      stats.notifications++;
-    } else {
+    // C. Insert notification (skip if suppressed and not notification-worthy)
+    if (cl.should_suppress && !cl.should_create_notification) {
       stats.skipped++;
+    } else {
+      const notifCreated = await insertNotificationIfNew(userId, classified);
+      if (notifCreated) {
+        stats.notifications++;
+      } else {
+        stats.skipped++;
+      }
     }
 
     // D. Track application
@@ -523,7 +531,7 @@ export async function runSyncOnce(): Promise<SyncStats> {
     if (appTracked) stats.applications++;
     if (classified.category === 'rejection' && appTracked) stats.rejections++;
 
-    // E. Track response lead (LinkedIn only)
+    // E. Track response lead
     const leadTracked = await trackResponseLead(userId, classified);
     if (leadTracked) stats.responseLeads++;
 
@@ -534,7 +542,7 @@ export async function runSyncOnce(): Promise<SyncStats> {
     await updateCheckpoint(state.id, maxUid, true);
     log.info(needsBackfill
       ? 'Initial backfill complete — subsequent runs will be incremental'
-      : `Checkpoint updated to UID ${maxUid}`
+      : `Checkpoint updated to UID ${maxUid}`,
     );
   }
 

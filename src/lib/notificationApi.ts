@@ -83,10 +83,13 @@ function rowToApplication(row: AppRow): TrackedApplication {
 // Categories excluded from Notices display and badge counts
 const SUPPRESSED_CATEGORIES = [
   'digest',
-  'marketing',
+  'promo',
+  'noise',
+  'marketing',         // legacy
   'connection_acceptance',
-  'reminder',
-  'unknown_relevant',
+  'reminder',          // legacy
+  'unknown_relevant',  // legacy
+  'unknown',
 ];
 
 // Categories excluded from Notices badge counts (but may still show in list if not suppressed)
@@ -188,9 +191,15 @@ export async function markAllNotificationsRead(): Promise<void> {
 // STRICT: only true human interactions and application responses
 const ACTIVE_LEAD_CATEGORIES = [
   'recruiter_response',
+  'inmail_message',
+  'job_opportunity',
+  'general_employment_interest',
+  'interview',
+  'assessment',
+  'rejection',
+  // Legacy
   'recruiter_follow_up',
   'interview_invite',
-  'rejection',
 ];
 
 export async function fetchActiveLeads(): Promise<EmailNotification[]> {

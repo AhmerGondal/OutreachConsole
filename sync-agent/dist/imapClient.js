@@ -2,7 +2,45 @@ import { ImapFlow } from 'imapflow';
 import { simpleParser } from 'mailparser';
 import { config } from './config.js';
 import { log } from './logger.js';
-const SEARCH_DOMAINS = ['linkedin.com', 'wellfound.com', 'angel.co'];
+// ── Search strategy ─────────────────────────────────────────
+//
+// Two tiers of IMAP searches, run sequentially inside a single
+// connection.  Results are deduped by UID before returning.
+//
+// TIER 1 — Platform domains (high-trust, exhaustive)
+//   One SEARCH per domain.  These are the known job-platform
+//   senders and will always be fetched.
+//
+// TIER 2 — Subject-keyword searches (conservative net)
+//   Catches recruiter / hiring / staffing / interview emails
+//   that come from non-platform senders (direct_email).
+//   Each keyword produces a narrow IMAP SUBJECT search.
+//   To avoid flooding: keywords are short, high-signal phrases
+//   that rarely appear in non-employment mail.
+const PLATFORM_DOMAINS = [
+    'linkedin.com',
+    'wellfound.com',
+    'angel.co',
+    'mercor.com',
+];
+// Subject keywords for direct-email recruiter/hiring signals.
+// Each entry becomes a separate IMAP SUBJECT search.
+// Keep this list tight — every entry is one server round-trip.
+const SUBJECT_KEYWORDS = [
+    'interview',
+    'your resume',
+    'your background',
+    'job opportunity',
+    'open role',
+    'open position',
+    'hiring',
+    'recruiter',
+    'staffing',
+    'talent acquisition',
+    'coding challenge',
+    'technical assessment',
+    'application',
+];
 // Candidate inbox paths — Yahoo sometimes uses a different path
 const INBOX_CANDIDATES = ['INBOX', 'Inbox', 'INBOX/Bulk'];
 const MAX_RETRIES = 3;
@@ -12,7 +50,6 @@ function sleep(ms) {
 }
 /**
  * List all mailbox folders the server exposes.
- * Used for diagnostics when INBOX selection fails.
  */
 async function listMailboxes(client) {
     try {
@@ -28,10 +65,8 @@ async function listMailboxes(client) {
 }
 /**
  * Try to open a mailbox lock with retries + exponential backoff.
- * If all INBOX_CANDIDATES fail, discovers the real inbox from the folder list.
  */
 async function openInboxWithRetry(client) {
-    // First, try the standard candidates with retries
     for (const candidate of INBOX_CANDIDATES) {
         for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
             try {
@@ -49,16 +84,13 @@ async function openInboxWithRetry(client) {
                     await sleep(delay);
                     continue;
                 }
-                // Non-transient or last attempt — try next candidate
                 log.warn(`Failed to open "${candidate}" after ${attempt} attempt(s): ${msg}`);
                 break;
             }
         }
     }
-    // All candidates failed — discover folders and try inbox-like paths
     log.warn('All standard inbox candidates failed. Discovering mailboxes...');
     const folders = await listMailboxes(client);
-    // Look for any folder whose path looks like an inbox
     const inboxLike = folders.find((f) => /^inbox$/i.test(f) || /inbox/i.test(f));
     if (inboxLike && !INBOX_CANDIDATES.includes(inboxLike)) {
         log.info(`Trying discovered inbox-like folder: "${inboxLike}"`);
@@ -74,6 +106,62 @@ async function openInboxWithRetry(client) {
     throw new Error(`Could not open any inbox. Available folders: [${folders.join(', ')}]. ` +
         'Yahoo may be experiencing a temporary outage — try again in a few minutes.');
 }
+// ── Search + fetch helpers ──────────────────────────────────
+async function searchAndCollect(client, criteria, label, seenUids, results) {
+    let seqNums;
+    try {
+        const result = await client.search(criteria);
+        seqNums = Array.isArray(result) ? result : [];
+    }
+    catch {
+        log.debug(`No results for ${label}`);
+        return;
+    }
+    if (seqNums.length === 0)
+        return;
+    log.info(`Found ${seqNums.length} emails for ${label}`);
+    const range = seqNums.join(',');
+    for await (const msg of client.fetch(range, {
+        uid: true,
+        envelope: true,
+        source: true,
+    })) {
+        try {
+            if (!msg.source)
+                continue;
+            // Skip already-seen UIDs (from earlier searches)
+            if (seenUids.has(msg.uid))
+                continue;
+            seenUids.add(msg.uid);
+            const parsed = await simpleParser(msg.source);
+            const fromAddr = parsed.from?.value?.[0];
+            results.push({
+                uid: msg.uid,
+                messageId: parsed.messageId || undefined,
+                from: fromAddr
+                    ? { address: fromAddr.address || '', name: fromAddr.name || '' }
+                    : undefined,
+                subject: parsed.subject || '',
+                date: parsed.date || undefined,
+                text: (parsed.text || '').slice(0, 3000),
+                inReplyTo: parsed.inReplyTo || undefined,
+                references: parsed.references || undefined,
+            });
+        }
+        catch (err) {
+            log.warn(`Failed to parse email UID ${msg.uid}:`, err);
+        }
+    }
+}
+function buildTimeCriteria(opts) {
+    const criteria = {};
+    if (opts.since)
+        criteria.since = opts.since;
+    if (opts.afterUid)
+        criteria.uid = `${opts.afterUid + 1}:*`;
+    return criteria;
+}
+// ── Main fetch ──────────────────────────────────────────────
 export async function fetchEmails(opts) {
     const client = new ImapFlow({
         host: config.yahoo.host,
@@ -86,59 +174,20 @@ export async function fetchEmails(opts) {
         logger: false,
     });
     const results = [];
+    const seenUids = new Set();
+    const timeBase = buildTimeCriteria(opts);
     try {
         await client.connect();
         log.info('Connected to Yahoo IMAP');
         const { lock } = await openInboxWithRetry(client);
         try {
-            for (const domain of SEARCH_DOMAINS) {
-                const criteria = { from: domain };
-                if (opts.since) {
-                    criteria.since = opts.since;
-                }
-                if (opts.afterUid) {
-                    criteria.uid = `${opts.afterUid + 1}:*`;
-                }
-                let seqNums;
-                try {
-                    const result = await client.search(criteria);
-                    seqNums = Array.isArray(result) ? result : [];
-                }
-                catch {
-                    log.debug(`No results for domain ${domain}`);
-                    continue;
-                }
-                if (seqNums.length === 0)
-                    continue;
-                log.info(`Found ${seqNums.length} emails from ${domain}`);
-                const range = seqNums.join(',');
-                for await (const msg of client.fetch(range, {
-                    uid: true,
-                    envelope: true,
-                    source: true,
-                })) {
-                    try {
-                        if (!msg.source)
-                            continue;
-                        const parsed = await simpleParser(msg.source);
-                        const fromAddr = parsed.from?.value?.[0];
-                        results.push({
-                            uid: msg.uid,
-                            messageId: parsed.messageId || undefined,
-                            from: fromAddr
-                                ? { address: fromAddr.address || '', name: fromAddr.name || '' }
-                                : undefined,
-                            subject: parsed.subject || '',
-                            date: parsed.date || undefined,
-                            text: (parsed.text || '').slice(0, 3000),
-                            inReplyTo: parsed.inReplyTo || undefined,
-                            references: parsed.references || undefined,
-                        });
-                    }
-                    catch (err) {
-                        log.warn(`Failed to parse email UID ${msg.uid}:`, err);
-                    }
-                }
+            // TIER 1 — Platform domain searches
+            for (const domain of PLATFORM_DOMAINS) {
+                await searchAndCollect(client, { ...timeBase, from: domain }, `FROM:${domain}`, seenUids, results);
+            }
+            // TIER 2 — Subject-keyword searches for direct recruiter emails
+            for (const keyword of SUBJECT_KEYWORDS) {
+                await searchAndCollect(client, { ...timeBase, subject: keyword }, `SUBJECT:"${keyword}"`, seenUids, results);
             }
         }
         finally {
@@ -154,15 +203,8 @@ export async function fetchEmails(opts) {
         catch { /* ignore */ }
         throw err;
     }
-    // Deduplicate by UID and sort ascending
-    const seen = new Set();
-    const unique = results.filter((r) => {
-        if (seen.has(r.uid))
-            return false;
-        seen.add(r.uid);
-        return true;
-    });
-    unique.sort((a, b) => a.uid - b.uid);
-    log.info(`Fetched ${unique.length} unique relevant emails`);
-    return unique;
+    // Sort ascending by UID
+    results.sort((a, b) => a.uid - b.uid);
+    log.info(`Fetched ${results.length} unique relevant emails`);
+    return results;
 }

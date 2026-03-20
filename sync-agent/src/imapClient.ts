@@ -14,7 +14,47 @@ export interface RawEmail {
   references: string | string[] | undefined;
 }
 
-const SEARCH_DOMAINS = ['linkedin.com', 'wellfound.com', 'angel.co'];
+// ── Search strategy ─────────────────────────────────────────
+//
+// Two tiers of IMAP searches, run sequentially inside a single
+// connection.  Results are deduped by UID before returning.
+//
+// TIER 1 — Platform domains (high-trust, exhaustive)
+//   One SEARCH per domain.  These are the known job-platform
+//   senders and will always be fetched.
+//
+// TIER 2 — Subject-keyword searches (conservative net)
+//   Catches recruiter / hiring / staffing / interview emails
+//   that come from non-platform senders (direct_email).
+//   Each keyword produces a narrow IMAP SUBJECT search.
+//   To avoid flooding: keywords are short, high-signal phrases
+//   that rarely appear in non-employment mail.
+
+const PLATFORM_DOMAINS = [
+  'linkedin.com',
+  'wellfound.com',
+  'angel.co',
+  'mercor.com',
+];
+
+// Subject keywords for direct-email recruiter/hiring signals.
+// Each entry becomes a separate IMAP SUBJECT search.
+// Keep this list tight — every entry is one server round-trip.
+const SUBJECT_KEYWORDS = [
+  'interview',
+  'your resume',
+  'your background',
+  'job opportunity',
+  'open role',
+  'open position',
+  'hiring',
+  'recruiter',
+  'staffing',
+  'talent acquisition',
+  'coding challenge',
+  'technical assessment',
+  'application',
+];
 
 // Candidate inbox paths — Yahoo sometimes uses a different path
 const INBOX_CANDIDATES = ['INBOX', 'Inbox', 'INBOX/Bulk'];
@@ -28,7 +68,6 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * List all mailbox folders the server exposes.
- * Used for diagnostics when INBOX selection fails.
  */
 async function listMailboxes(client: ImapFlow): Promise<string[]> {
   try {
@@ -44,12 +83,10 @@ async function listMailboxes(client: ImapFlow): Promise<string[]> {
 
 /**
  * Try to open a mailbox lock with retries + exponential backoff.
- * If all INBOX_CANDIDATES fail, discovers the real inbox from the folder list.
  */
 async function openInboxWithRetry(
   client: ImapFlow,
 ): Promise<{ lock: { release: () => void }; path: string }> {
-  // First, try the standard candidates with retries
   for (const candidate of INBOX_CANDIDATES) {
     for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
       try {
@@ -68,18 +105,15 @@ async function openInboxWithRetry(
           continue;
         }
 
-        // Non-transient or last attempt — try next candidate
         log.warn(`Failed to open "${candidate}" after ${attempt} attempt(s): ${msg}`);
         break;
       }
     }
   }
 
-  // All candidates failed — discover folders and try inbox-like paths
   log.warn('All standard inbox candidates failed. Discovering mailboxes...');
   const folders = await listMailboxes(client);
 
-  // Look for any folder whose path looks like an inbox
   const inboxLike = folders.find(
     (f) => /^inbox$/i.test(f) || /inbox/i.test(f),
   );
@@ -101,6 +135,72 @@ async function openInboxWithRetry(
   );
 }
 
+// ── Search + fetch helpers ──────────────────────────────────
+
+async function searchAndCollect(
+  client: ImapFlow,
+  criteria: Record<string, unknown>,
+  label: string,
+  seenUids: Set<number>,
+  results: RawEmail[],
+): Promise<void> {
+  let seqNums: number[];
+  try {
+    const result = await client.search(criteria);
+    seqNums = Array.isArray(result) ? result : [];
+  } catch {
+    log.debug(`No results for ${label}`);
+    return;
+  }
+
+  if (seqNums.length === 0) return;
+  log.info(`Found ${seqNums.length} emails for ${label}`);
+
+  const range = seqNums.join(',');
+  for await (const msg of client.fetch(range, {
+    uid: true,
+    envelope: true,
+    source: true,
+  })) {
+    try {
+      if (!msg.source) continue;
+      // Skip already-seen UIDs (from earlier searches)
+      if (seenUids.has(msg.uid)) continue;
+      seenUids.add(msg.uid);
+
+      const parsed = await simpleParser(msg.source);
+      const fromAddr = parsed.from?.value?.[0];
+
+      results.push({
+        uid: msg.uid,
+        messageId: parsed.messageId || undefined,
+        from: fromAddr
+          ? { address: fromAddr.address || '', name: fromAddr.name || '' }
+          : undefined,
+        subject: parsed.subject || '',
+        date: parsed.date || undefined,
+        text: (parsed.text || '').slice(0, 3000),
+        inReplyTo: parsed.inReplyTo || undefined,
+        references: parsed.references || undefined,
+      });
+    } catch (err) {
+      log.warn(`Failed to parse email UID ${msg.uid}:`, err);
+    }
+  }
+}
+
+function buildTimeCriteria(opts: {
+  since?: Date;
+  afterUid?: number;
+}): Record<string, unknown> {
+  const criteria: Record<string, unknown> = {};
+  if (opts.since) criteria.since = opts.since;
+  if (opts.afterUid) criteria.uid = `${opts.afterUid + 1}:*`;
+  return criteria;
+}
+
+// ── Main fetch ──────────────────────────────────────────────
+
 export async function fetchEmails(opts: {
   since?: Date;
   afterUid?: number;
@@ -117,6 +217,8 @@ export async function fetchEmails(opts: {
   });
 
   const results: RawEmail[] = [];
+  const seenUids = new Set<number>();
+  const timeBase = buildTimeCriteria(opts);
 
   try {
     await client.connect();
@@ -124,55 +226,26 @@ export async function fetchEmails(opts: {
 
     const { lock } = await openInboxWithRetry(client);
     try {
-      for (const domain of SEARCH_DOMAINS) {
-        const criteria: Record<string, unknown> = { from: domain };
+      // TIER 1 — Platform domain searches
+      for (const domain of PLATFORM_DOMAINS) {
+        await searchAndCollect(
+          client,
+          { ...timeBase, from: domain },
+          `FROM:${domain}`,
+          seenUids,
+          results,
+        );
+      }
 
-        if (opts.since) {
-          criteria.since = opts.since;
-        }
-        if (opts.afterUid) {
-          criteria.uid = `${opts.afterUid + 1}:*`;
-        }
-
-        let seqNums: number[];
-        try {
-          const result = await client.search(criteria);
-          seqNums = Array.isArray(result) ? result : [];
-        } catch {
-          log.debug(`No results for domain ${domain}`);
-          continue;
-        }
-
-        if (seqNums.length === 0) continue;
-        log.info(`Found ${seqNums.length} emails from ${domain}`);
-
-        const range = seqNums.join(',');
-        for await (const msg of client.fetch(range, {
-          uid: true,
-          envelope: true,
-          source: true,
-        })) {
-          try {
-            if (!msg.source) continue;
-            const parsed = await simpleParser(msg.source);
-            const fromAddr = parsed.from?.value?.[0];
-
-            results.push({
-              uid: msg.uid,
-              messageId: parsed.messageId || undefined,
-              from: fromAddr
-                ? { address: fromAddr.address || '', name: fromAddr.name || '' }
-                : undefined,
-              subject: parsed.subject || '',
-              date: parsed.date || undefined,
-              text: (parsed.text || '').slice(0, 3000),
-              inReplyTo: parsed.inReplyTo || undefined,
-              references: parsed.references || undefined,
-            });
-          } catch (err) {
-            log.warn(`Failed to parse email UID ${msg.uid}:`, err);
-          }
-        }
+      // TIER 2 — Subject-keyword searches for direct recruiter emails
+      for (const keyword of SUBJECT_KEYWORDS) {
+        await searchAndCollect(
+          client,
+          { ...timeBase, subject: keyword },
+          `SUBJECT:"${keyword}"`,
+          seenUids,
+          results,
+        );
       }
     } finally {
       lock.release();
@@ -185,15 +258,9 @@ export async function fetchEmails(opts: {
     throw err;
   }
 
-  // Deduplicate by UID and sort ascending
-  const seen = new Set<number>();
-  const unique = results.filter((r) => {
-    if (seen.has(r.uid)) return false;
-    seen.add(r.uid);
-    return true;
-  });
-  unique.sort((a, b) => a.uid - b.uid);
+  // Sort ascending by UID
+  results.sort((a, b) => a.uid - b.uid);
 
-  log.info(`Fetched ${unique.length} unique relevant emails`);
-  return unique;
+  log.info(`Fetched ${results.length} unique relevant emails`);
+  return results;
 }

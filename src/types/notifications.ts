@@ -1,14 +1,30 @@
-export type NotificationPlatform = 'linkedin' | 'wellfound' | 'other';
+export type NotificationPlatform =
+  | 'linkedin'
+  | 'wellfound'
+  | 'mercor'
+  | 'direct_email'
+  | 'email'
+  | 'other';
 
 export type NotificationCategory =
   | 'application_confirmation'
+  | 'application_update'
   | 'recruiter_response'
-  | 'recruiter_follow_up'
-  | 'interview_invite'
+  | 'inmail_message'
+  | 'job_opportunity'
+  | 'general_employment_interest'
+  | 'interview'
+  | 'assessment'
   | 'rejection'
   | 'connection_acceptance'
-  | 'reminder'
   | 'digest'
+  | 'promo'
+  | 'noise'
+  | 'unknown'
+  // Legacy categories kept for backward compat with existing DB rows
+  | 'recruiter_follow_up'
+  | 'interview_invite'
+  | 'reminder'
   | 'marketing'
   | 'unknown_relevant';
 
@@ -63,13 +79,23 @@ export interface NotificationSummary {
 
 export const CATEGORY_LABELS: Record<NotificationCategory, string> = {
   application_confirmation: 'Application Sent',
+  application_update: 'Application Update',
   recruiter_response: 'Recruiter Response',
-  recruiter_follow_up: 'Follow-Up',
-  interview_invite: 'Interview Invite',
+  inmail_message: 'Message',
+  job_opportunity: 'Job Opportunity',
+  general_employment_interest: 'Employment Interest',
+  interview: 'Interview',
+  assessment: 'Assessment',
   rejection: 'Rejection',
   connection_acceptance: 'Connection',
-  reminder: 'Reminder',
   digest: 'Digest',
+  promo: 'Promo',
+  noise: 'Noise',
+  unknown: 'Other',
+  // Legacy
+  recruiter_follow_up: 'Follow-Up',
+  interview_invite: 'Interview Invite',
+  reminder: 'Reminder',
   marketing: 'Marketing',
   unknown_relevant: 'Other',
 };
